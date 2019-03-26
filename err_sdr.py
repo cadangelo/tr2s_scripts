@@ -50,11 +50,14 @@ def step5(cfg, cfg2, cfg5):
     if meshflux:
       # Adjoint flux file is an hdf5 mesh file 
       fw_n_err = meshflux
-      m = Mesh(structured=True, mesh=fw_n_err, mats=None)
+      #m = Mesh(structured=True, mesh=fw_n_err, mats=None)
+      m = Mesh(structured=False, mesh=fw_n_err, mats=None)
     else:
       raise RuntimeError("No neutron flux file given")
 
     # Size of flux tag is equal to the total number of energy groups
+    m.TALLY_TAG = NativeMeshTag(num_n_groups, name="TALLY_TAG")
+    fw_n_flux = m.TALLY_TAG[:]
     m.ERROR_TAG = NativeMeshTag(num_n_groups, name="ERROR_TAG")
     fw_n_err = m.ERROR_TAG[:]
 
@@ -73,17 +76,19 @@ def step5(cfg, cfg2, cfg5):
     dg = discretize_geom(m)
     for t, dt in enumerate(decay_times): 
         temp = np.zeros(shape=(len(m), num_p_groups))
+        #print ("len m ", len(m))
         for i in range(len(m)):
+            #print ("i ", i)
             for row in np.atleast_1d(dg[dg["idx"] == i]):
                 cell = row[1]
                 if not cell_mats[cell] in mat_names:
                     continue
                 vol_frac = row[2]
                 mat = mat_names.index(cell_mats[cell])
+                #print("i, cell, mat ", i, cell, mat)
                 for h in range(num_p_groups):
                     for g in range(num_n_groups):
-                        temp[i, h] += (fw_n_err[i, g]**2)*T[mat, t, g, h]*vol_frac
-                    print("err ", temp[i,h])
+                        temp[i, h] += ((fw_n_flux[i, g]*fw_n_err[i, g])**2)*T[mat, t, g, h]*vol_frac
         # Tag the mesh with the squared error in the photon source values
         #tag_name = "sq_err_q_src_{0}".format(dt)
         tag_name = "sq_err_p_src"
