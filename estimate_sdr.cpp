@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <map>
 
+//#include "moab/CartVect.hpp"
 #include "moab/Core.hpp"
 #include "moab/Interface.hpp"
 #include "moab/Range.hpp"
@@ -26,6 +27,7 @@ struct Tet_info{
        std::vector<double> result;
        double vol;
 };
+
 struct CartVect{
     double coords[3];
     inline CartVect() {}
@@ -155,8 +157,8 @@ rval = mbi.tag_get_handle(result_tag_name.c_str(),
                            moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
 //                           moab::MB_TAG_DENSE);//|moab::MB_TAG_CREAT);
 //MB_CHK_SET_ERR(rval, "Error getting result tag handle.");
-if (moab::MB_SUCCESS != rval)
-  std::cout << "warning: could not get tag handle " << result_tag_name << std::endl;
+//if (moab::MB_SUCCESS != rval)
+//  std::cout << "warning: could not get tag handle " << result_tag_name << std::endl;
 num_e_groups = num_groups(result_tag);
 //std::cout << "num e groups " << num_e_groups << std::endl;
 std::vector<double> result(num_e_groups, 0);
@@ -165,7 +167,6 @@ std::vector<double> result(num_e_groups, 0);
 ves.clear();
 rval = mbi.get_entities_by_dimension(fileset, 3, ves);MB_CHK_SET_ERR(rval, "Error getting 3d elements");
 MB_CHK_SET_ERR(rval, "Error getting tets.");
-//std::cout << "Num vol elements: " << ves.size() << std::endl;
 int tet_id;
 for (it = ves.begin(); it != ves.end(); ++it){
   // get the id tag on the ve
@@ -194,7 +195,6 @@ for (it = ves.begin(); it != ves.end(); ++it){
   }
   double ve_vol = abs(tet_volume( coords[0], coords[1], coords[2], coords[3] ));
 
-
   // Add entity handle and result to tet id map 
   tet_map[tet_id].eh = *it;
   tet_map[tet_id].result = result;
@@ -214,8 +214,6 @@ moab::EntityHandle fileset;
 std::map<int, Tet_info> adj_flux_map;
 std::map<int, Tet_info> p_src_map;
 std::map<int, Tet_info> sq_err_p_src_map;
-//std::map<int, Tet_info> adj_n_src_map;
-
 
 // get adjoint photon flux results
 //std::cout << "Adjoint photon flux file: " << argv[1] << std::endl;
@@ -241,20 +239,17 @@ int num_e_groups_p_err;
 rval = get_mesh_elements(argv[1], sq_err_p_src_tag_name, sq_err_p_src_map, fileset, num_e_groups_p_err);
 MB_CHK_SET_ERR(rval, "Error getting sq err p src mesh file");
 
-// volume of mesh
-//double num_tets = adj_flux_map.size();
-//std::cout << "num tets " << num_tets << std::endl;
 double sdr_contributions = 0.0;
 double sdr_at_detector = 0.0;
 double sq_err = 0.0;
-// for each tet ID, keep running total of the flux scored in each configuration 
 moab::EntityHandle tet_id;
+// for each tet ID, keep running total of the sdr and error
 std::map<int, Tet_info>::iterator mit;
-for(mit = adj_flux_map.begin(); mit!=adj_flux_map.end(); ++mit){
+for(mit = p_src_map.begin(); mit!=p_src_map.end(); ++mit){
   tet_id = mit->first;
-  for(int j=0; j <= num_e_groups_src-1; j++){
-    sdr_contributions += adj_flux_map[tet_id].result[j]*p_src_map[tet_id].result[j]*p_src_map[tet_id].vol;
-    sq_err += adj_flux_map[tet_id].result[j]*sq_err_p_src_map[tet_id].result[j]*p_src_map[tet_id].vol;
+  for(int h=0; h <= num_e_groups_src-1; h++){
+    sdr_contributions += adj_flux_map[tet_id].result[h]*p_src_map[tet_id].result[h]*p_src_map[tet_id].vol;
+    sq_err += adj_flux_map[tet_id].result[h]*sq_err_p_src_map[tet_id].result[h]*p_src_map[tet_id].vol;
   }
 }
 
