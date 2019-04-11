@@ -21,6 +21,11 @@ moab::Core mbi;
 moab::Tag result_tag;
 moab::Tag error_tag;
 moab::Tag id_tag;
+moab::Tag sdr_tag;
+moab::Tag sdr_err_tag;
+moab::Tag p_src_err_tag;
+
+
 
 struct Tet_info{
        moab::EntityHandle eh;
@@ -142,14 +147,15 @@ rval = mbi.load_file(filename.c_str(), &fileset);
 MB_CHK_SET_ERR(rval, "Error loading file.");
 
 // Get ID tag
-rval = mbi.tag_get_handle( GLOBAL_ID_TAG_NAME,
+//rval = mbi.tag_get_handle( GLOBAL_ID_TAG_NAME,
+rval = mbi.tag_get_handle( "GLOBAL_ID",
                            1, 
                            moab::MB_TYPE_INTEGER,
                            id_tag,
                            moab::MB_TAG_DENSE );
 MB_CHK_SET_ERR(rval, "Error getting ID handle.");
 // Get result tag
-//std::cout << "result tag name: " << result_tag_name << std::endl;
+std::cout << "result tag name: " << result_tag_name << std::endl;
 rval = mbi.tag_get_handle(result_tag_name.c_str(),
                            moab::MB_TAG_VARLEN,
                            moab::MB_TYPE_DOUBLE,
@@ -157,16 +163,16 @@ rval = mbi.tag_get_handle(result_tag_name.c_str(),
                            moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
 //                           moab::MB_TAG_DENSE);//|moab::MB_TAG_CREAT);
 //MB_CHK_SET_ERR(rval, "Error getting result tag handle.");
-//if (moab::MB_SUCCESS != rval)
-//  std::cout << "warning: could not get tag handle " << result_tag_name << std::endl;
 num_e_groups = num_groups(result_tag);
-//std::cout << "num e groups " << num_e_groups << std::endl;
+std::cout << "num e groups " << num_e_groups << std::endl;
 std::vector<double> result(num_e_groups, 0);
 
 // Get all 3D elements in fileset 
 ves.clear();
-rval = mbi.get_entities_by_dimension(fileset, 3, ves);MB_CHK_SET_ERR(rval, "Error getting 3d elements");
+//rval = mbi.get_entities_by_dimension(fileset, 3, ves);
+rval = mbi.get_entities_by_type(fileset, moab::MBTET, ves);
 MB_CHK_SET_ERR(rval, "Error getting tets.");
+std::cout << "num ves " << ves.size() << std::endl;
 int tet_id;
 for (it = ves.begin(); it != ves.end(); ++it){
   // get the id tag on the ve
@@ -194,13 +200,13 @@ for (it = ves.begin(); it != ves.end(); ++it){
     ++i;
   }
   double ve_vol = abs(tet_volume( coords[0], coords[1], coords[2], coords[3] ));
+//  std::cout << "tet result vol" << tet_id << " " << result[18] << " " << ve_vol << std::endl;
 
   // Add entity handle and result to tet id map 
   tet_map[tet_id].eh = *it;
   tet_map[tet_id].result = result;
   tet_map[tet_id].vol = ve_vol;
 }
-//std::cout << "tet id " << tet_id << std::endl;
 
 return moab::MB_SUCCESS;
 }
@@ -214,6 +220,28 @@ moab::EntityHandle fileset;
 std::map<int, Tet_info> adj_flux_map;
 std::map<int, Tet_info> p_src_map;
 std::map<int, Tet_info> sq_err_p_src_map;
+
+// Get sdr tag
+std::string sdr_tag_name ("sdr");
+rval = mbi.tag_get_handle(sdr_tag_name.c_str(),
+                           moab::MB_TAG_VARLEN,
+                           moab::MB_TYPE_DOUBLE,
+                           sdr_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+// Get sdr err tag
+std::string sdr_err_tag_name ("sdr_err");
+rval = mbi.tag_get_handle(sdr_err_tag_name.c_str(),
+                           moab::MB_TAG_VARLEN,
+                           moab::MB_TYPE_DOUBLE,
+                           sdr_err_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+// Get p src err tag
+std::string p_src_err_tag_name ("p_src_err");
+rval = mbi.tag_get_handle(p_src_err_tag_name.c_str(),
+                           moab::MB_TAG_VARLEN,
+                           moab::MB_TYPE_DOUBLE,
+                           p_src_err_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
 
 // get adjoint photon flux results
 //std::cout << "Adjoint photon flux file: " << argv[1] << std::endl;
@@ -239,25 +267,74 @@ int num_e_groups_p_err;
 rval = get_mesh_elements(argv[1], sq_err_p_src_tag_name, sq_err_p_src_map, fileset, num_e_groups_p_err);
 MB_CHK_SET_ERR(rval, "Error getting sq err p src mesh file");
 
+// initialize sdr, sdr err, p src err maps
+//map<X, Y> mp2(mp1);
+std::map<int, Tet_info> sq_err_sdr_map =p_src_map;
+std::map<int, Tet_info> rel_err_sdr_map = p_src_map;
+std::map<int, Tet_info> rel_err_p_src_map = p_src_map;
+std::map<int, Tet_info> sdr_contributions_map = p_src_map;
+
+// create final meshset
+moab::EntityHandle result_meshset;
+rval = mbi.create_meshset(moab::MESHSET_SET, result_meshset); MB_CHK_ERR(rval);
+MB_CHK_SET_ERR(rval, "Error creating meshset.");
+
+
 double sdr_contributions = 0.0;
 double sdr_at_detector = 0.0;
 double sq_err = 0.0;
 moab::EntityHandle tet_id;
 // for each tet ID, keep running total of the sdr and error
 std::map<int, Tet_info>::iterator mit;
+std::cout << p_src_map.size() << std::endl;
 for(mit = p_src_map.begin(); mit!=p_src_map.end(); ++mit){
   tet_id = mit->first;
   for(int h=0; h <= num_e_groups_src-1; h++){
+    // accumulate sdr contributions over all energy group, all  tets
     sdr_contributions += adj_flux_map[tet_id].result[h]*p_src_map[tet_id].result[h]*p_src_map[tet_id].vol;
+
+    // sdr contribution in each tet, per energy group
+    sdr_contributions_map[tet_id].result[h] = adj_flux_map[tet_id].result[h]*p_src_map[tet_id].result[h]*p_src_map[tet_id].vol;
+
+    // accumulate sq. error in sdr over all energy groups, all tets
     sq_err += adj_flux_map[tet_id].result[h]*sq_err_p_src_map[tet_id].result[h]*p_src_map[tet_id].vol;
+
+    // relative error in sdr contribution per energy group, per tet
+    sq_err_sdr_map[tet_id].result[h] = adj_flux_map[tet_id].result[h]*sq_err_p_src_map[tet_id].result[h]*p_src_map[tet_id].vol;
+    rel_err_sdr_map[tet_id].result[h] = sqrt(sq_err_sdr_map[tet_id].result[h])/sdr_contributions_map[tet_id].result[h];
+
+    // relative error in photon source per energy group, per tet
+    rel_err_p_src_map[tet_id].result[h] = sqrt(sq_err_p_src_map[tet_id].result[h])/p_src_map[tet_id].result[h];
   }
+  //set the tag vals 
+  rval = mbi.tag_set_data(sdr_tag, &(p_src_map[tet_id].eh), 1, &sdr_contributions_map[tet_id].result[0]);
+  MB_CHK_SET_ERR(rval, "Error setting sdr contribution tag val.");
+  //std::cout << "sdr " << sdr_contributions_map[tet_id].result[18] << std::endl;
+  //std::cout << "sdr sq err " << sq_err_sdr_map[tet_id].result[18] << std::endl;
+
+  rval = mbi.tag_set_data(sdr_err_tag, &(p_src_map[tet_id].eh), 1, &rel_err_sdr_map[tet_id].result[0]);
+  MB_CHK_SET_ERR(rval, "Error setting err in sdr contribution tag val.");
+  //std::cout << "rel err sdr " << rel_err_sdr_map[tet_id].result[18] << std::endl;
+
+  rval = mbi.tag_set_data(p_src_err_tag, &(p_src_map[tet_id].eh), 1, &rel_err_p_src_map[tet_id].result[0]);
+  MB_CHK_SET_ERR(rval, "Error setting err in sdr contribution tag val.");
+  //std::cout << "p src " << p_src_map[tet_id].result[18] << std::endl;
+  //std::cout << "sq err p src " << sq_err_p_src_map[tet_id].result[18] << std::endl;
+  //std::cout << "rel err p src " << rel_err_p_src_map[tet_id].result[18] << std::endl;
+
+  //add tet to meshset
+  rval = mbi.add_entities(result_meshset, &(p_src_map[tet_id].eh), 1);
+  MB_CHK_SET_ERR(rval, "Error adding EH to result meshset.");
 }
 
-sdr_at_detector = sdr_contributions;
-double sdr_err = pow(sq_err, 0.5);
+//rval = mbi.write_mesh("sdr_err_mesh.h5m");
+moab::EntityHandle output_list[] = {result_meshset};
+rval = mbi.write_mesh("sdr_err_mesh.h5m", output_list, 1);
+MB_CHK_SET_ERR(rval, "Error writing mesh.");
 
-//std::cout << "SDR at detector = " << sdr_at_detector << std::endl;
-//std::cout << "Error in SDR at detector = " << sdr_err << std::endl;
+sdr_at_detector = sdr_contributions;
+double sdr_err = sqrt(sq_err);
+
 std::string ts = argv[2];
 std::cout << ts << " " << sdr_at_detector << " " << sdr_err << std::endl;
   
