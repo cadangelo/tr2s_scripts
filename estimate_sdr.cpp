@@ -25,6 +25,8 @@ moab::Tag sdr_tag;
 moab::Tag sdr_err_tag;
 moab::Tag p_src_err_tag;
 moab::Tag p_src_tag;
+moab::Tag ap_flux_tag;
+moab::Tag sq_p_src_err_tag2;
 
 struct Tet_info{
        moab::EntityHandle eh;
@@ -228,6 +230,20 @@ rval = mbi.tag_get_handle(p_src_err_tag_name.c_str(),
                            moab::MB_TYPE_DOUBLE,
                            p_src_err_tag,
                            moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+std::string sq_p_src_err_tag_name ("sq_p_src_err2");
+rval = mbi.tag_get_handle(sq_p_src_err_tag_name.c_str(),
+                           //moab::MB_TAG_VARLEN,
+                           42,
+                           moab::MB_TYPE_DOUBLE,
+                           sq_p_src_err_tag2,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+std::string ap_flux_tag_name ("ap_flux");
+rval = mbi.tag_get_handle(ap_flux_tag_name.c_str(),
+                           //moab::MB_TAG_VARLEN,
+                           217,
+                           moab::MB_TYPE_DOUBLE,
+                           ap_flux_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
 // Get sdr tag
 std::string sdr_tag_name ("sdr");
 rval = mbi.tag_get_handle(sdr_tag_name.c_str(),
@@ -252,9 +268,6 @@ rval = mbi.tag_get_handle(p_src_tag_name2.c_str(),
                            moab::MB_TYPE_DOUBLE,
                            p_src_tag,
                            moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
-int bytes;
-rval = mbi.tag_get_bytes(sdr_tag, bytes);
-std::cout << "sdr size " << bytes << std::endl;
 
 // get adjoint photon flux results
 //std::cout << "Adjoint photon flux file: " << argv[1] << std::endl;
@@ -297,54 +310,88 @@ double sdr_contributions = 0.0;
 double sdr_at_detector = 0.0;
 double sq_err_sdr = 0.0;
 moab::EntityHandle tet_id;
+moab::EntityHandle p_src_eh;
+double vol;
+double adj_flux_h;
+double p_src_h;
+double sq_err_p_src_h;
 // for each tet ID, keep running total of the sdr and error
 std::map<int, Tet_info>::iterator mit;
 std::cout << p_src_map.size() << std::endl;
 for(mit = p_src_map.begin(); mit!=p_src_map.end(); ++mit){
   tet_id = mit->first;
+  vol = p_src_map[tet_id].vol;
+  p_src_eh = p_src_map[tet_id].eh;
+  std::vector<double> sdr_result(num_e_groups_src, 0);
+  std::vector<double> sq_err_sdr_result(num_e_groups_src, 0);
+  std::vector<double> rel_err_sdr_result(num_e_groups_src, 0);
+  std::vector<double> rel_err_p_src_result(num_e_groups_src, 0);
   for(int h=0; h <= num_e_groups_src-1; h++){
+    adj_flux_h = adj_flux_map[tet_id].result[h];
+    p_src_h = p_src_map[tet_id].result[h];
+    sq_err_p_src_h = sq_err_p_src_map[tet_id].result[h];
+
     // relative error in photon source per energy group, per tet
-    if (p_src_map[tet_id].result[h] == 0){
-      rel_err_p_src_map[tet_id].result[h] = 0.0;
+    if (p_src_h == 0){
+      //rel_err_p_src_map[tet_id].result[h] = 0.0;
+      rel_err_p_src_result[h] = 0.0;
     }
     else{
-      rel_err_p_src_map[tet_id].result[h] = (sqrt(sq_err_p_src_map[tet_id].result[h]))/p_src_map[tet_id].result[h];
+      //rel_err_p_src_map[tet_id].result[h] = (sqrt(sq_err_p_src_h))/p_src_h;
+      rel_err_p_src_result[h] = (sqrt(sq_err_p_src_h))/p_src_h;
     }
 //    std::cout << "rel err p src " << h << " " << rel_err_p_src_map[tet_id].result[h] << std::endl;
 
     // sdr contribution in each tet, per energy group
-    sdr_contributions_map[tet_id].result[h] = adj_flux_map[tet_id].result[h]*p_src_map[tet_id].result[h]*p_src_map[tet_id].vol;
+    sdr_contributions_map[tet_id].result[h] = adj_flux_h*p_src_h*vol;
+    sdr_result[h] = adj_flux_h*p_src_h*vol;
+    //std::cout << "sdr, h " << h << " " << sdr_result[h] << std::endl;
 
     // accumulate sdr contributions over all energy group, all  tets
-    sdr_contributions += adj_flux_map[tet_id].result[h]*p_src_map[tet_id].result[h]*p_src_map[tet_id].vol;
+    //sdr_contributions += adj_flux_map[tet_id].result[h]*p_src_map[tet_id].result[h]*p_src_map[tet_id].vol;
+    //sdr_contributions += sdr_contributions_map[tet_id].result[h];
+    sdr_contributions += sdr_result[h];
 
     // accumulate sq. error in sdr over all energy groups, all tets
-    sq_err_sdr += adj_flux_map[tet_id].result[h]*sq_err_p_src_map[tet_id].result[h]*p_src_map[tet_id].vol;
+    sq_err_sdr += adj_flux_h*sq_err_p_src_h*vol;
 
     // relative error in sdr contribution per energy group, per tet
-    if (sdr_contributions_map[tet_id].result[h] == 0){
-      sq_err_sdr_map[tet_id].result[h] = 0.0;
-      rel_err_sdr_map[tet_id].result[h] = 0.0;
+    //if (sdr_contributions_map[tet_id].result[h] == 0){
+    if (sdr_result[h] == 0){
+      //sq_err_sdr_map[tet_id].result[h] = 0.0;
+      sq_err_sdr_result[h] = 0.0;
+      //rel_err_sdr_map[tet_id].result[h] = 0.0;
+      rel_err_sdr_result[h] = 0.0;
     }
     else{
-      sq_err_sdr_map[tet_id].result[h] = adj_flux_map[tet_id].result[h]*sq_err_p_src_map[tet_id].result[h]*p_src_map[tet_id].vol;
-      rel_err_sdr_map[tet_id].result[h] = (sqrt(sq_err_sdr_map[tet_id].result[h]))/sdr_contributions_map[tet_id].result[h];
+      //sq_err_sdr_map[tet_id].result[h] = adj_flux_h*sq_err_p_src_h*vol;
+      sq_err_sdr_result[h] = adj_flux_h*sq_err_p_src_h*vol;
+      //rel_err_sdr_map[tet_id].result[h] = (sqrt(sq_err_sdr_map[tet_id].result[h]))/sdr_contributions_map[tet_id].result[h];
+      rel_err_sdr_result[h] = (sqrt(sq_err_sdr_result[h]))/sdr_result[h];
     }
 //    std::cout << "rel err sdr " << h << " " << rel_err_p_src_map[tet_id].result[h] << std::endl;
   }
   //set the tag vals 
-  rval = mbi.tag_set_data(p_src_err_tag, &(p_src_map[tet_id].eh), 1, &(rel_err_p_src_map[tet_id].result[0]));
+//  rval = mbi.tag_set_data(ap_flux_tag, &(p_src_map[tet_id].eh), 1, &(adj_flux_map[tet_id].result[0]));
+//  MB_CHK_SET_ERR(rval, "Error setting ap flux tag val.");
+//  rval = mbi.tag_set_data(sq_p_src_err_tag2, &(p_src_map[tet_id].eh), 1, &(sq_err_p_src_map[tet_id].result[0]));
+//  MB_CHK_SET_ERR(rval, "Error setting sq err in sdr contribution tag val.");
+
+  rval = mbi.tag_set_data(p_src_err_tag, &(p_src_eh), 1, &(rel_err_p_src_result[0]));
+  //rval = mbi.tag_set_data(p_src_err_tag, &(p_src_map[tet_id].eh), 1, &(rel_err_p_src_map[tet_id].result[0]));
   MB_CHK_SET_ERR(rval, "Error setting err in sdr contribution tag val.");
 
-  rval = mbi.tag_set_data(sdr_tag, &(p_src_map[tet_id].eh), 1, &(sdr_contributions_map[tet_id].result[0]));
+  rval = mbi.tag_set_data(sdr_tag, &(p_src_eh), 1, &(sdr_result[0]));
+  //rval = mbi.tag_set_data(sdr_tag, &(p_src_map[tet_id].eh), 1, &(sdr_contributions_map[tet_id].result[0]));
   MB_CHK_SET_ERR(rval, "Error setting sdr contribution tag val.");
 
-  rval = mbi.tag_set_data(sdr_err_tag, &(p_src_map[tet_id].eh), 1, &(rel_err_sdr_map[tet_id].result[0]));
+  rval = mbi.tag_set_data(sdr_err_tag, &(p_src_eh), 1, &(rel_err_sdr_result[0]));
+  //rval = mbi.tag_set_data(sdr_err_tag, &(p_src_map[tet_id].eh), 1, &(rel_err_sdr_map[tet_id].result[0]));
   MB_CHK_SET_ERR(rval, "Error setting err in sdr contribution tag val.");
 
 
   //add tet to meshset
-  rval = mbi.add_entities(result_meshset, &(p_src_map[tet_id].eh), 1);
+  rval = mbi.add_entities(result_meshset, &(p_src_eh), 1);
   MB_CHK_SET_ERR(rval, "Error adding EH to result meshset.");
 }
 
