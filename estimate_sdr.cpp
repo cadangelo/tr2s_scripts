@@ -318,14 +318,18 @@ double sq_err_p_src_h;
 // for each tet ID, keep running total of the sdr and error
 std::map<int, Tet_info>::iterator mit;
 std::cout << p_src_map.size() << std::endl;
+
 for(mit = p_src_map.begin(); mit!=p_src_map.end(); ++mit){
+
   tet_id = mit->first;
   vol = p_src_map[tet_id].vol;
   p_src_eh = p_src_map[tet_id].eh;
+
   std::vector<double> sdr_result(num_e_groups_src, 0);
   std::vector<double> sq_err_sdr_result(num_e_groups_src, 0);
   std::vector<double> rel_err_sdr_result(num_e_groups_src, 0);
   std::vector<double> rel_err_p_src_result(num_e_groups_src, 0);
+
   for(int h=0; h <= num_e_groups_src-1; h++){
     adj_flux_h = adj_flux_map[tet_id].result[h];
     p_src_h = p_src_map[tet_id].result[h];
@@ -333,60 +337,39 @@ for(mit = p_src_map.begin(); mit!=p_src_map.end(); ++mit){
 
     // relative error in photon source per energy group, per tet
     if (p_src_h == 0){
-      //rel_err_p_src_map[tet_id].result[h] = 0.0;
       rel_err_p_src_result[h] = 0.0;
     }
     else{
-      //rel_err_p_src_map[tet_id].result[h] = (sqrt(sq_err_p_src_h))/p_src_h;
       rel_err_p_src_result[h] = (sqrt(sq_err_p_src_h))/p_src_h;
     }
-//    std::cout << "rel err p src " << h << " " << rel_err_p_src_map[tet_id].result[h] << std::endl;
 
     // sdr contribution in each tet, per energy group
-    sdr_contributions_map[tet_id].result[h] = adj_flux_h*p_src_h*vol;
     sdr_result[h] = adj_flux_h*p_src_h*vol;
-    //std::cout << "sdr, h " << h << " " << sdr_result[h] << std::endl;
 
     // accumulate sdr contributions over all energy group, all  tets
-    //sdr_contributions += adj_flux_map[tet_id].result[h]*p_src_map[tet_id].result[h]*p_src_map[tet_id].vol;
-    //sdr_contributions += sdr_contributions_map[tet_id].result[h];
     sdr_contributions += sdr_result[h];
 
     // accumulate sq. error in sdr over all energy groups, all tets
     sq_err_sdr += adj_flux_h*sq_err_p_src_h*vol;
 
     // relative error in sdr contribution per energy group, per tet
-    //if (sdr_contributions_map[tet_id].result[h] == 0){
     if (sdr_result[h] == 0){
-      //sq_err_sdr_map[tet_id].result[h] = 0.0;
       sq_err_sdr_result[h] = 0.0;
-      //rel_err_sdr_map[tet_id].result[h] = 0.0;
       rel_err_sdr_result[h] = 0.0;
     }
     else{
-      //sq_err_sdr_map[tet_id].result[h] = adj_flux_h*sq_err_p_src_h*vol;
       sq_err_sdr_result[h] = adj_flux_h*sq_err_p_src_h*vol;
-      //rel_err_sdr_map[tet_id].result[h] = (sqrt(sq_err_sdr_map[tet_id].result[h]))/sdr_contributions_map[tet_id].result[h];
       rel_err_sdr_result[h] = (sqrt(sq_err_sdr_result[h]))/sdr_result[h];
     }
-//    std::cout << "rel err sdr " << h << " " << rel_err_p_src_map[tet_id].result[h] << std::endl;
   }
   //set the tag vals 
-//  rval = mbi.tag_set_data(ap_flux_tag, &(p_src_map[tet_id].eh), 1, &(adj_flux_map[tet_id].result[0]));
-//  MB_CHK_SET_ERR(rval, "Error setting ap flux tag val.");
-//  rval = mbi.tag_set_data(sq_p_src_err_tag2, &(p_src_map[tet_id].eh), 1, &(sq_err_p_src_map[tet_id].result[0]));
-//  MB_CHK_SET_ERR(rval, "Error setting sq err in sdr contribution tag val.");
-
   rval = mbi.tag_set_data(p_src_err_tag, &(p_src_eh), 1, &(rel_err_p_src_result[0]));
-  //rval = mbi.tag_set_data(p_src_err_tag, &(p_src_map[tet_id].eh), 1, &(rel_err_p_src_map[tet_id].result[0]));
   MB_CHK_SET_ERR(rval, "Error setting err in sdr contribution tag val.");
 
   rval = mbi.tag_set_data(sdr_tag, &(p_src_eh), 1, &(sdr_result[0]));
-  //rval = mbi.tag_set_data(sdr_tag, &(p_src_map[tet_id].eh), 1, &(sdr_contributions_map[tet_id].result[0]));
   MB_CHK_SET_ERR(rval, "Error setting sdr contribution tag val.");
 
   rval = mbi.tag_set_data(sdr_err_tag, &(p_src_eh), 1, &(rel_err_sdr_result[0]));
-  //rval = mbi.tag_set_data(sdr_err_tag, &(p_src_map[tet_id].eh), 1, &(rel_err_sdr_map[tet_id].result[0]));
   MB_CHK_SET_ERR(rval, "Error setting err in sdr contribution tag val.");
 
 
