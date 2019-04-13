@@ -199,9 +199,11 @@ for (it = ves.begin(); it != ves.end(); ++it){
     coords[i].coords[1] = coord[1];
     coords[i].coords[2] = coord[2];
     ++i;
+   // std::cout << "coords " << coord[0] << " " << coord[1] << " " << coord[2] << std::endl;
   }
-  double ve_vol = abs(tet_volume( coords[0], coords[1], coords[2], coords[3] ));
-//  std::cout << "tet result vol" << tet_id << " " << result[18] << " " << ve_vol << std::endl;
+  double ve_vol = fabs(tet_volume( coords[0], coords[1], coords[2], coords[3] ));
+  //double ve_vol = tet_volume( coords[0], coords[1], coords[2], coords[3] );
+  //std::cout << "tet vol" << tet_id << " " << ve_vol << std::endl;
 
   // Add entity handle, result, and vol to tet id map 
   tet_map[tet_id].eh = *it;
@@ -280,7 +282,8 @@ MB_CHK_SET_ERR(rval, "Error getting adj flux mesh file");
 // get forward photon source results
 //std::cout << "Photon source file: " << argv[1] << std::endl;
 p_src_map.clear();
-std::string p_src_tag_name = "source_density";
+//std::string p_src_tag_name = "source_density";
+std::string p_src_tag_name = "est_p_src";
 int num_e_groups_src;
 rval = get_mesh_elements(argv[1], p_src_tag_name, p_src_map, fileset, num_e_groups_src);
 MB_CHK_SET_ERR(rval, "Error getting source mesh file");
@@ -342,15 +345,13 @@ for(mit = p_src_map.begin(); mit!=p_src_map.end(); ++mit){
     else{
       rel_err_p_src_result[h] = (sqrt(sq_err_p_src_h))/p_src_h;
     }
-
+    std::cout << "p src, sq err, rel err " << p_src_h << " " << sq_err_p_src_h << " " << rel_err_p_src_result[h] << std::endl;
     // sdr contribution in each tet, per energy group
     sdr_result[h] = adj_flux_h*p_src_h*vol;
 
     // accumulate sdr contributions over all energy group, all  tets
     sdr_contributions += sdr_result[h];
 
-    // accumulate sq. error in sdr over all energy groups, all tets
-    sq_err_sdr += adj_flux_h*sq_err_p_src_h*vol;
 
     // relative error in sdr contribution per energy group, per tet
     if (sdr_result[h] == 0){
@@ -358,9 +359,14 @@ for(mit = p_src_map.begin(); mit!=p_src_map.end(); ++mit){
       rel_err_sdr_result[h] = 0.0;
     }
     else{
-      sq_err_sdr_result[h] = adj_flux_h*sq_err_p_src_h*vol;
+      sq_err_sdr_result[h] = pow((adj_flux_h*sqrt(sq_err_p_src_h)*vol), 2);
       rel_err_sdr_result[h] = (sqrt(sq_err_sdr_result[h]))/sdr_result[h];
     }
+    std::cout << "h sdr, sq err, rel err " << h << " " << sdr_result[h] << " " << sq_err_sdr_result[h] << " " << rel_err_sdr_result[h] << std::endl;
+    // accumulate sq. error in sdr over all energy groups, all tets
+    //sq_err_sdr += adj_flux_h*sq_err_p_src_h*vol;
+    sq_err_sdr += sq_err_sdr_result[h];
+    //std::cout << "accum sdr sq err " << sq_err_sdr << std::endl;
   }
   //set the tag vals 
   rval = mbi.tag_set_data(p_src_err_tag, &(p_src_eh), 1, &(rel_err_p_src_result[0]));
