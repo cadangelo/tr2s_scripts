@@ -24,9 +24,6 @@ moab::Tag id_tag;
 moab::Tag sdr_tag;
 moab::Tag sdr_err_tag;
 moab::Tag p_src_err_tag;
-//moab::Tag p_src_tag;
-//moab::Tag ap_flux_tag;
-//moab::Tag sq_p_src_err_tag2;
 
 struct Tet_info{
        moab::EntityHandle eh;
@@ -199,11 +196,8 @@ for (it = ves.begin(); it != ves.end(); ++it){
     coords[i].coords[1] = coord[1];
     coords[i].coords[2] = coord[2];
     ++i;
-   // std::cout << "coords " << coord[0] << " " << coord[1] << " " << coord[2] << std::endl;
   }
   double ve_vol = fabs(tet_volume( coords[0], coords[1], coords[2], coords[3] ));
-  //double ve_vol = tet_volume( coords[0], coords[1], coords[2], coords[3] );
-  //std::cout << "tet vol" << tet_id << " " << ve_vol << std::endl;
 
   // Add entity handle, result, and vol to tet id map 
   tet_map[tet_id].eh = *it;
@@ -227,29 +221,13 @@ std::map<int, Tet_info> sq_err_p_src_map;
 // Get p src err tag
 std::string p_src_err_tag_name ("p_src_err");
 rval = mbi.tag_get_handle(p_src_err_tag_name.c_str(),
-                           //moab::MB_TAG_VARLEN,
                            42,
                            moab::MB_TYPE_DOUBLE,
                            p_src_err_tag,
                            moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
-//std::string sq_p_src_err_tag_name ("sq_p_src_err2");
-//rval = mbi.tag_get_handle(sq_p_src_err_tag_name.c_str(),
-//                           //moab::MB_TAG_VARLEN,
-//                           42,
-//                           moab::MB_TYPE_DOUBLE,
-//                           sq_p_src_err_tag2,
-//                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
-//std::string ap_flux_tag_name ("ap_flux");
-//rval = mbi.tag_get_handle(ap_flux_tag_name.c_str(),
-//                           //moab::MB_TAG_VARLEN,
-//                           217,
-//                           moab::MB_TYPE_DOUBLE,
-//                           ap_flux_tag,
-//                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
 // Get sdr tag
 std::string sdr_tag_name ("sdr");
 rval = mbi.tag_get_handle(sdr_tag_name.c_str(),
-                           //moab::MB_TAG_VARLEN,
                            42,
                            moab::MB_TYPE_DOUBLE,
                            sdr_tag,
@@ -257,19 +235,10 @@ rval = mbi.tag_get_handle(sdr_tag_name.c_str(),
 // Get sdr err tag
 std::string sdr_err_tag_name ("sdr_err");
 rval = mbi.tag_get_handle(sdr_err_tag_name.c_str(),
-                           //moab::MB_TAG_VARLEN,
                            42,
                            moab::MB_TYPE_DOUBLE,
                            sdr_err_tag,
                            moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
-//// Get p src tag
-//std::string p_src_tag_name2 ("p_src");
-//rval = mbi.tag_get_handle(p_src_tag_name2.c_str(),
-//                           //moab::MB_TAG_VARLEN,
-//                           42,
-//                           moab::MB_TYPE_DOUBLE,
-//                           p_src_tag,
-//                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
 
 // get adjoint photon flux results
 //std::cout << "Adjoint photon flux file: " << argv[1] << std::endl;
@@ -295,13 +264,6 @@ std::string sq_err_p_src_tag_name = "sq_err_p_src";
 int num_e_groups_p_err;
 rval = get_mesh_elements(argv[1], sq_err_p_src_tag_name, sq_err_p_src_map, fileset, num_e_groups_p_err);
 MB_CHK_SET_ERR(rval, "Error getting sq err p src mesh file");
-
-// initialize sdr, sdr err, p src err maps
-//map<X, Y> mp2(mp1);
-//std::map<int, Tet_info> sq_err_sdr_map =p_src_map;
-//std::map<int, Tet_info> rel_err_sdr_map = p_src_map;
-//std::map<int, Tet_info> rel_err_p_src_map = p_src_map;
-//std::map<int, Tet_info> sdr_contributions_map = p_src_map;
 
 // create final meshset
 moab::EntityHandle result_meshset;
@@ -378,7 +340,6 @@ for(mit = p_src_map.begin(); mit!=p_src_map.end(); ++mit){
   MB_CHK_SET_ERR(rval, "Error adding EH to result meshset.");
 }
 
-//rval = mbi.write_mesh("sdr_err_mesh.h5m");
 moab::EntityHandle output_list[] = {result_meshset};
 rval = mbi.write_mesh("sdr_err_mesh.h5m", output_list, 1);
 MB_CHK_SET_ERR(rval, "Error writing mesh.");
