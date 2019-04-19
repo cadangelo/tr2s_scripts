@@ -48,7 +48,8 @@ for outp_file in os.listdir(os.getcwd()):
                 print ts, tal
 #                print('time_step:{} energy:{} tally: {} error: {}\n'.format(time_step, energy, tally, error))
                 time_step.append(int (ts))
-                tally.append(float (tal)*10e-12)
+                # orig tally units are picoSv/s-- convert to microSv/hr
+                tally.append(float (tal)*10e-6*60)
                 error.append(float (err))
 
 sorted_tally = [x for _, x in sorted(zip(time_step, tally))]
@@ -63,14 +64,14 @@ matplotlib.rc('text',usetex=True)
 matplotlib.rc('font',family='serif')
 
 figname='sdr_dose.pdf'
-titname='SDR';
+titname='Shutdown Dose Rate at Detector over Time';
 
 # shift the error bars in X
 #drp_ebin_diff = 1-np.divide(np.divide(drp_ebin[1]-drp_ebin[0],2),drp_ebin[0])
 #drp_ebin_shift = np.multiply(drp_ebin, drp_ebin_diff)
 
 ax = plt.subplot(111)
-ax.set_yscale("log")
+#ax.set_yscale("log")
 
 #drp_b = ax.step(drp_ebin,drp_tal,c='r',label='DRP ON')
 #nodrp_b = ax.step(nodrp_ebin,nodrp_tal,c='b',label='DRP ON')
@@ -78,14 +79,16 @@ ax.set_yscale("log")
 #ax.step(drp_ebin,drp_tal,c='r',label='DRP ON')
 #
 #ax.errorbar(drp_ebin_shift,drp_tal,yerr=drp_err,fmt=None,ecolor='black')
-ax.scatter(time_step, tally)
+#ax.scatter(time_step, tally)
+tal_err = [e*t for e,t in zip(error,tally)]
+ax.errorbar(time_step, tally, yerr=tal_err, fmt='o',ecolor='black')
 #ax.scatter(sorted_time_step, accumulated_dose)
 
 plt.xlabel('Time Step',fontsize=18)
-plt.ylabel('Shutdown Dose Rate [Sv/s]',fontsize=18)
+plt.ylabel('Shutdown Dose Rate [microSv/hr]',fontsize=18)
 plt.title(titname,fontsize=14)
-plt.xlim(0,32)
-#plt.ylim(1e-21,1e-19)
+plt.xlim(0,34)
+plt.ylim(1e-13,1e-12)
 
 plt.legend()
 #plt.savefig(figname)

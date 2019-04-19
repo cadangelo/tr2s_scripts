@@ -293,6 +293,7 @@ for(ts_it = ts_delta_map.begin(); ts_it != ts_delta_map.end(); ts_it++){
             tot_flux_map[tet_id].flux[j] /= total_time;
           }
       }
+//      std::cout << "tet id " << tet_id << "tot flux " << tot_flux_map[tet_id].flux[18] << std::endl; 
       if(ts == num_time_steps-1){
             //set the flux tag val to be the avg 
             rval = mbi.tag_set_data(flux_tag, &(tot_flux_map[tet_id].eh), 1, &tot_flux_map[tet_id].flux[0]);

@@ -167,6 +167,7 @@ moab::ErrorCode sort_filenames(int num_files, char **files,
 
 int main(int argc, char **argv){
 
+std::cout << "num args " << argc << std::endl;
 std::map<int, std::string> map_step_to_filename;
 sort_filenames(argc, argv, map_step_to_filename);
 
