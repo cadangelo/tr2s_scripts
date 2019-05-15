@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <cstdlib>
 #include <cstdio>
 #include <math.h>
@@ -22,8 +23,15 @@ moab::Tag result_tag;
 moab::Tag error_tag;
 moab::Tag id_tag;
 moab::Tag sdr_tag;
+moab::Tag total_sdr_tag;
 moab::Tag sdr_err_tag;
+moab::Tag total_sdr_err_tag;
+moab::Tag total_sdr_abs_err_tag;
+moab::Tag total_sdr_sq_err_tag;
+moab::Tag fom_tag;
+moab::Tag total_fom_tag;
 moab::Tag p_src_err_tag;
+moab::Tag total_p_src_err_tag;
 
 struct Tet_info{
        moab::EntityHandle eh;
@@ -225,6 +233,12 @@ rval = mbi.tag_get_handle(p_src_err_tag_name.c_str(),
                            moab::MB_TYPE_DOUBLE,
                            p_src_err_tag,
                            moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+std::string total_p_src_err_tag_name ("total_p_src_err");
+rval = mbi.tag_get_handle(total_p_src_err_tag_name.c_str(),
+                           1,
+                           moab::MB_TYPE_DOUBLE,
+                           total_p_src_err_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
 // Get sdr tag
 std::string sdr_tag_name ("sdr");
 rval = mbi.tag_get_handle(sdr_tag_name.c_str(),
@@ -232,12 +246,49 @@ rval = mbi.tag_get_handle(sdr_tag_name.c_str(),
                            moab::MB_TYPE_DOUBLE,
                            sdr_tag,
                            moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+std::string total_sdr_tag_name ("total_sdr");
+rval = mbi.tag_get_handle(total_sdr_tag_name.c_str(),
+                           1,
+                           moab::MB_TYPE_DOUBLE,
+                           total_sdr_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
 // Get sdr err tag
 std::string sdr_err_tag_name ("sdr_err");
 rval = mbi.tag_get_handle(sdr_err_tag_name.c_str(),
                            42,
                            moab::MB_TYPE_DOUBLE,
                            sdr_err_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+std::string total_sdr_err_tag_name ("total_sdr_err");
+rval = mbi.tag_get_handle(total_sdr_err_tag_name.c_str(),
+                           1,
+                           moab::MB_TYPE_DOUBLE,
+                           total_sdr_err_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+std::string total_sdr_abs_err_tag_name ("total_sdr_abs_err");
+rval = mbi.tag_get_handle(total_sdr_abs_err_tag_name.c_str(),
+                           1,
+                           moab::MB_TYPE_DOUBLE,
+                           total_sdr_abs_err_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+std::string total_sdr_sq_err_tag_name ("total_sdr_sq_err");
+rval = mbi.tag_get_handle(total_sdr_sq_err_tag_name.c_str(),
+                           1,
+                           moab::MB_TYPE_DOUBLE,
+                           total_sdr_sq_err_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+// Get fom tag
+std::string fom_tag_name ("fom");
+rval = mbi.tag_get_handle(fom_tag_name.c_str(),
+                           42,
+                           moab::MB_TYPE_DOUBLE,
+                           fom_tag,
+                           moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
+std::string total_fom_tag_name ("total_fom");
+rval = mbi.tag_get_handle(total_fom_tag_name.c_str(),
+                           1,
+                           moab::MB_TYPE_DOUBLE,
+                           total_fom_tag,
                            moab::MB_TAG_SPARSE|moab::MB_TAG_CREAT);
 
 // get adjoint photon flux results
@@ -272,6 +323,7 @@ MB_CHK_SET_ERR(rval, "Error creating meshset.");
 
 
 double sdr_contributions = 0.0;
+double fom_contributions = 0.0;
 double sq_err_sdr = 0.0;
 moab::EntityHandle tet_id;
 moab::EntityHandle p_src_eh;
@@ -281,6 +333,10 @@ double p_src_h;
 double sq_err_p_src_h;
 double abs_err_p_src_h; 
 std::map<int, Tet_info>::iterator mit;
+double t_proc = atof(argv[3]);
+std::vector<double> sq_err_sdr_vec;//(p_src_map.size(), 0);
+std::map<int,double> sq_err_sdr_map;
+
 
 // for each tet ID, keep running total of the sdr and error
 for(mit = p_src_map.begin(); mit!=p_src_map.end(); ++mit){
@@ -289,9 +345,14 @@ for(mit = p_src_map.begin(); mit!=p_src_map.end(); ++mit){
   p_src_eh = p_src_map[tet_id].eh;
 
   std::vector<double> sdr_result(num_e_groups_src, 0);
+  std::vector<double> fom_result(num_e_groups_src, 0);
   std::vector<double> sq_err_sdr_result(num_e_groups_src, 0);
   std::vector<double> rel_err_sdr_result(num_e_groups_src, 0);
   std::vector<double> rel_err_p_src_result(num_e_groups_src, 0);
+  double sdr_total_result = 0;
+  double fom_total_result = 0;
+  double sq_err_p_src_total_result = 0;
+  double sq_err_sdr_total_result = 0;
 
   for(int h=0; h <= num_e_groups_src-1; h++){
     adj_flux_h = adj_flux_map[tet_id].result[h];
@@ -299,41 +360,85 @@ for(mit = p_src_map.begin(); mit!=p_src_map.end(); ++mit){
     sq_err_p_src_h = sq_err_p_src_map[tet_id].result[h];
     abs_err_p_src_h = sqrt(sq_err_p_src_h);
 
-    // relative error in photon source per energy group, per tet
+    // relative error in photon source per energy group
     if (p_src_h == 0){
       rel_err_p_src_result[h] = 0.0;
     }
     else{
       rel_err_p_src_result[h] = abs_err_p_src_h/p_src_h;
     }
-    // sdr contribution in each tet, per energy group
+    // accumulate abs error in p src
+    sq_err_p_src_total_result += pow(abs_err_p_src_h, 2);
+
+    // sdr contribution per energy group
     sdr_result[h] = adj_flux_h*p_src_h*vol;
 
-    // accumulate sdr contributions over all energy group, all  tets
-    sdr_contributions += sdr_result[h];
+    // accumulate sdr contributions over all energy groups
+    sdr_total_result += sdr_result[h];
 
-
-    // error in sdr contribution per energy group, per tet
+    // sq. abs error in sdr contribution per energy group
     sq_err_sdr_result[h] = pow((adj_flux_h*abs_err_p_src_h*vol), 2);
+    // accumulate sq. abs error in sdr over all energy groups
+    sq_err_sdr_total_result += sq_err_sdr_result[h];
     if (sdr_result[h] == 0){
       rel_err_sdr_result[h] = 0.0;
+      fom_result[h] = 0.0;
     }
     else{
       rel_err_sdr_result[h] = (sqrt(sq_err_sdr_result[h]))/sdr_result[h];
+      //fom_result[h] = 1/(sq_err_sdr_result[h]*t_proc);
+      fom_result[h] = 1/(pow(rel_err_sdr_result[h] , 2)*t_proc);
     }
-    // accumulate sq. error in sdr over all energy groups, all tets
-    sq_err_sdr += sq_err_sdr_result[h];
   }
+  // total abs. err in sdr per tet
+  double total_sdr_abs_err = sqrt(sq_err_sdr_total_result);
+  // total rel. err in sdr per tet
+  double total_sdr_rel_err;
+  if(sdr_total_result == 0){ 
+    total_sdr_rel_err = 0;
+    fom_total_result = 0;
+  }
+  else{
+    total_sdr_rel_err = total_sdr_abs_err/sdr_total_result;
+    fom_total_result = 1/( pow(total_sdr_rel_err, 2) * t_proc);
+  }
+
+  // accumulate sdr contributions over all energy groups and all  tets
+  sdr_contributions += sdr_total_result;
+  // accumulate sq. error in sdr over all energy groups and all tets
+  sq_err_sdr += sq_err_sdr_total_result;
+  sq_err_sdr_vec.push_back(sq_err_sdr_total_result);
+  sq_err_sdr_map[tet_id]=sq_err_sdr_total_result;
+//  std::cout << "tet id, sq err in sdr " << tet_id << " " << sq_err_sdr_total_result << std::endl;
+  // accumulate fom over all tets
+  fom_contributions += fom_total_result;
+
   //set the tag vals 
-  rval = mbi.tag_set_data(p_src_err_tag, &(p_src_eh), 1, &(rel_err_p_src_result[0]));
+//  rval = mbi.tag_set_data(p_src_err_tag, &(p_src_eh), 1, &(rel_err_p_src_result[0]));
+//  MB_CHK_SET_ERR(rval, "Error setting total err in p src tag val.");
+//  double total_psrc_err = sqrt(sq_err_p_src_total_result);
+//  rval = mbi.tag_set_data(total_p_src_err_tag, &(p_src_eh), 1, &(total_psrc_err));
+//  MB_CHK_SET_ERR(rval, "Error setting total err in p src val.");
+
+//  rval = mbi.tag_set_data(sdr_tag, &(p_src_eh), 1, &(sdr_result[0]));
+//  MB_CHK_SET_ERR(rval, "Error setting sdr contribution tag val.");
+  rval = mbi.tag_set_data(total_sdr_tag, &(p_src_eh), 1, &(sdr_total_result));
+  MB_CHK_SET_ERR(rval, "Error setting total sdr contribution tag val.");
+
+//  rval = mbi.tag_set_data(sdr_err_tag, &(p_src_eh), 1, &(rel_err_sdr_result[0]));
+//  MB_CHK_SET_ERR(rval, "Error setting err in sdr contribution tag val.");
+  rval = mbi.tag_set_data(total_sdr_err_tag, &(p_src_eh), 1, &(total_sdr_rel_err));
+  MB_CHK_SET_ERR(rval, "Error setting err in sdr contribution tag val.");
+  rval = mbi.tag_set_data(total_sdr_abs_err_tag, &(p_src_eh), 1, &(total_sdr_abs_err));
+  MB_CHK_SET_ERR(rval, "Error setting err in sdr contribution tag val.");
+  rval = mbi.tag_set_data(total_sdr_sq_err_tag, &(p_src_eh), 1, &(sq_err_sdr_total_result));
   MB_CHK_SET_ERR(rval, "Error setting err in sdr contribution tag val.");
 
-  rval = mbi.tag_set_data(sdr_tag, &(p_src_eh), 1, &(sdr_result[0]));
-  MB_CHK_SET_ERR(rval, "Error setting sdr contribution tag val.");
+//  rval = mbi.tag_set_data(fom_tag, &(p_src_eh), 1, &(fom_result[0]));
+//  MB_CHK_SET_ERR(rval, "Error setting FOM tag val.");
 
-  rval = mbi.tag_set_data(sdr_err_tag, &(p_src_eh), 1, &(rel_err_sdr_result[0]));
-  MB_CHK_SET_ERR(rval, "Error setting err in sdr contribution tag val.");
-
+  rval = mbi.tag_set_data(total_fom_tag, &(p_src_eh), 1, &(fom_total_result));
+  MB_CHK_SET_ERR(rval, "Error setting total FOM tag val.");
 
   //add tet to meshset
   rval = mbi.add_entities(result_meshset, &(p_src_eh), 1);
@@ -347,8 +452,41 @@ MB_CHK_SET_ERR(rval, "Error writing mesh.");
 double sdr_at_detector = sdr_contributions;
 double sdr_abs_err = sqrt(sq_err_sdr);
 double sdr_rel_err = sdr_abs_err/sdr_at_detector;
+double fom = 1/(pow(sdr_rel_err,2)*t_proc);
+
+//std::vector<double> sorted_sq_err_vec = std::sort(sq_err_sdr_vec.begin(), sq_err_sdr_vec.end());
+std::sort(sq_err_sdr_vec.begin(), sq_err_sdr_vec.end());
+std::vector<double> cdf; 
+std::vector<double>::iterator it;
+double cumulative_val; 
+std::ofstream cdf_file;
+std::ofstream pdf_file;
+std::string method = argv[4];
+std::string str_tproc = argv[3];
+cdf_file.open((method+str_tproc+"_cdf.txt").c_str());
+pdf_file.open((method+str_tproc+"_pdf.txt").c_str());
+//pdf_file.open((method+std::to_string(t_proc)+"_pdf.txt").c_str());
+//for(it = sorted_sq_err_vec.begin(); it !=sorted_sq_err_vec.end(); ++it){
+for(it = sq_err_sdr_vec.begin(); it !=sq_err_sdr_vec.end(); ++it){
+  cumulative_val += *it;
+//  cdf.push_back(cumulative_val);
+//  pdf.push_back(*it);
+  cdf_file << cumulative_val;
+  cdf_file << "\n";
+//  std::cout << *it << std::endl;
+  pdf_file << *it;
+  pdf_file << "\n";
+}
+cdf_file.close();  
+pdf_file.close();  
+
+double sq_err_max = sq_err_sdr_vec.back();
+//std::cout << "max err " << sq_err_max << std::endl;
+double updated_fom = (pow(sdr_at_detector,2))/(t_proc * (sq_err_sdr-sq_err_max));
 
 std::string ts = argv[2];
-std::cout << ts << " " << sdr_at_detector << " " << sdr_abs_err << " " << sdr_rel_err << std::endl;
+//std::cout << ts << " " << sdr_at_detector << " " << sdr_abs_err << " " << sdr_rel_err << " " << fom <<std::endl;
+//std::cout << method << " " << t_proc << " " << ts << " " << sdr_at_detector << " " << sdr_abs_err << " " << sdr_rel_err << " " << fom << " " << updated_fom << std::endl;
+std::cout << method << " " << t_proc << " " << ts << " " << fom << " " << updated_fom << std::endl;
   
 }
